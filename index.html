@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CJ's Task Tracker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2a78d6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tracker">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page:           #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;   /* blue - sequential/progress */
+    --status-good:    #0ca30c;
+    --status-warning: #fab219;
+    --card-shadow:    0 1px 2px rgba(11,11,11,0.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page:           #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --status-good:    #0ca30c;
+      --status-warning: #fab219;
+      --card-shadow:    0 1px 2px rgba(0,0,0,0.3);
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --page:           #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --border:         rgba(255,255,255,0.10);
+    --series-1:       #3987e5;
+    --status-good:    #0ca30c;
+    --status-warning: #fab219;
+    --card-shadow:    0 1px 2px rgba(0,0,0,0.3);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .viz-root { background: var(--page); color: var(--text-primary); min-height: 100vh; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 32px 20px 64px; }
+
+  header.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+  .sub { color: var(--text-secondary); font-size: 13px; margin: 0; }
+  #synced { color: var(--text-muted); font-size: 12px; }
+  #install-btn {
+    display: none; margin-top: 6px; font: inherit; font-size: 12px; font-weight: 600;
+    padding: 6px 12px; border-radius: 7px; border: 1px solid var(--series-1); color: var(--series-1);
+    background: transparent; cursor: pointer;
+  }
+  #install-btn.show { display: inline-block; }
+  #sync-area { display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 6px; font-size: 12px; }
+  #sync-status { color: var(--text-muted); }
+  #sync-status.synced { color: var(--status-good); }
+  #signin-btn, #signout-btn {
+    font: inherit; font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); cursor: pointer;
+  }
+  #signout-btn { display: none; }
+
+  .stat-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stat-tile {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--card-shadow); padding: 14px 18px; min-width: 140px; flex: 1;
+  }
+  .stat-tile .val { font-size: 26px; font-weight: 700; font-variant-numeric: proportional-nums; line-height: 1.1; }
+  .stat-tile .lbl { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .cal-panel {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--card-shadow); padding: 16px 18px; margin-bottom: 28px;
+  }
+  .cal-panel h2 { font-size: 14px; margin: 0 0 10px; font-weight: 700; }
+  .cal-empty { color: var(--text-muted); font-size: 13px; }
+  .cal-event { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--gridline); }
+  .cal-event:first-child { border-top: none; }
+  .cal-event .when { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--card-shadow); padding: 16px 18px;
+  }
+  .card h3 { font-size: 15px; margin: 0 0 2px; font-weight: 700; }
+  .card .cat-sub { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px; }
+  .progress-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .progress-track { flex: 1; height: 6px; border-radius: 3px; background: var(--gridline); overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--series-1); border-radius: 3px; transition: width .2s ease; }
+  .progress-count { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  ul.items { list-style: none; margin: 0; padding: 0; }
+  ul.items ul.items { margin-top: 4px; margin-left: 26px; }
+  .item { display: flex; align-items: flex-start; gap: 8px; padding: 5px 0; font-size: 13.5px; }
+  .item.group-header { font-weight: 600; padding-top: 10px; }
+  .item input[type="checkbox"] { margin-top: 3px; width: 15px; height: 15px; accent-color: var(--status-good); flex-shrink: 0; cursor: pointer; }
+  .item label { cursor: pointer; flex: 1; }
+  .item.done label { color: var(--text-muted); text-decoration: line-through; }
+  .due-badge {
+    font-size: 10.5px; padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+    border: 1px solid var(--border); color: var(--text-secondary); margin-left: 4px;
+  }
+  .due-badge.overdue { color: #b23a1f; border-color: #e0a98f; background: rgba(250,178,25,0.12); }
+
+  .section-heading { font-size: 18px; font-weight: 700; margin: 36px 0 4px; }
+  .section-sub { font-size: 13px; color: var(--text-secondary); margin: 0 0 16px; }
+
+  .motivation-banner {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--series-1) 10%, var(--surface-1)), var(--surface-1));
+    border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--card-shadow);
+    padding: 16px 18px; margin-bottom: 20px; display: flex; gap: 12px; align-items: flex-start;
+  }
+  .motivation-banner .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--series-1); font-weight: 700; margin-bottom: 4px; }
+  .motivation-banner .quote { font-size: 14.5px; line-height: 1.5; }
+  .motivation-banner .source { font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+
+  details.toolkit-group { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--card-shadow); margin-bottom: 10px; overflow: hidden; }
+  details.toolkit-group summary { padding: 13px 16px; font-size: 14px; font-weight: 700; cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; }
+  details.toolkit-group summary::-webkit-details-marker { display: none; }
+  details.toolkit-group summary::after { content: "+"; font-weight: 400; color: var(--text-muted); font-size: 18px; }
+  details.toolkit-group[open] summary::after { content: "\2212"; }
+  details.toolkit-group .body { padding: 0 16px 16px; font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
+  details.toolkit-group .body h4 { font-size: 12.5px; color: var(--text-primary); margin: 12px 0 4px; }
+  details.toolkit-group .body h4:first-child { margin-top: 0; }
+  details.toolkit-group .body ul { margin: 4px 0 8px; padding-left: 18px; }
+  details.toolkit-group .body li { margin-bottom: 3px; }
+  details.toolkit-group .body p { margin: 4px 0; }
+  .caveat { font-size: 12px; font-style: italic; color: var(--text-muted); }
+  .src-links { font-size: 11px; color: var(--text-muted); margin-top: 10px; }
+  .src-links a { color: var(--text-muted); }
+
+  .journal-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--card-shadow); padding: 16px 18px; margin-bottom: 10px; }
+  .journal-card .jdate { font-size: 11.5px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+  .journal-card p { font-size: 13.5px; margin: 6px 0; }
+  .journal-card .focus { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--gridline); font-size: 13px; }
+  .journal-card .focus b { color: var(--series-1); }
+
+  footer { margin-top: 32px; font-size: 12px; color: var(--text-muted); line-height: 1.6; border-top: 1px solid var(--gridline); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="wrap">
+    <header class="top">
+      <div>
+        <h1>CJ's Task Tracker</h1>
+        <p class="sub">Everything on the go — work, side hustles, home, health, family.</p>
+      </div>
+      <div style="text-align:right;">
+        <div id="synced"></div>
+        <button id="install-btn">Install app</button>
+        <div id="sync-area">
+          <span id="sync-status">Checking sync setup…</span>
+          <button id="signin-btn">Sign in with Google</button>
+          <button id="signout-btn">Sign out</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="stat-row">
+      <div class="stat-tile"><div class="val" id="stat-total">0</div><div class="lbl">Total items</div></div>
+      <div class="stat-tile"><div class="val" id="stat-done">0</div><div class="lbl">Done</div></div>
+      <div class="stat-tile"><div class="val" id="stat-pct">0%</div><div class="lbl">Overall progress</div></div>
+      <div class="stat-tile"><div class="val" id="stat-cats">0</div><div class="lbl">Categories</div></div>
+    </div>
+
+    <div class="cal-panel">
+      <h2>Calendar — next 7 days</h2>
+      <div id="cal-body"><div class="cal-empty">Nothing on the calendar this week. Clear runway to make progress.</div></div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <h2 class="section-heading">Growth &amp; Mindset Toolkit</h2>
+    <p class="section-sub">Tailored to what's on your plate above — expand a section for detail.</p>
+
+    <div class="motivation-banner">
+      <div>
+        <div class="tag" id="mot-tag">Today's angle</div>
+        <div class="quote" id="mot-quote"></div>
+        <div class="source" id="mot-source"></div>
+      </div>
+    </div>
+
+    <details class="toolkit-group" open>
+      <summary>Learning tools — picked for your specific goals</summary>
+      <div class="body">
+        <h4>Indonesian</h4>
+        <p>Pimsleur for pronunciation and listening habit, paired with Anki (spaced-repetition flashcards) for vocab retention, plus italki for real conversation with a native tutor once you've got a base. This three-part combo — audio habit, spaced recall, live use — is the combination language educators most consistently point to, rather than any single app doing it all.</p>
+        <h4>Japanese</h4>
+        <p>Same structure, adjusted for kanji: WaniKani (purpose-built spaced repetition for kanji/vocab) is the standout tool language communities rate highest for kanji specifically, Anki for everything else, italki for speaking, and Migaku if you want to learn from native shows/YouTube later on.</p>
+        <h4>App building (learn to make apps for your phone)</h4>
+        <p>Two honest paths — pick based on what you actually want: if the goal is "get an app working," start with a no-code builder like FlutterFlow (visual builder, exports to real Flutter code if you outgrow it later) or Thunkable. If the goal is "actually learn to code," Swift Playgrounds (free, Apple-made, genuinely beginner-friendly) or freeCodeCamp for programming fundamentals first.</p>
+        <h4>Cabinetry — drawing plans (Job 1 &amp; 2)</h4>
+        <p>SketchUp Free is the practical pick for drawing cabinetry plans — free, browser-based, and the closest thing to an industry standard for quick furniture/joinery drafting without a steep CAD learning curve.</p>
+        <h4>Surfing — local waves around Miami</h4>
+        <p>Miami Beach itself is a patrolled beach break with A-frame peaks, better left than right, and usually less crowded than the points nearby — worth starting there. Burleigh Heads, just south, is a serious barrelling point break for experienced surfers, not a place to learn. Broadbeach, north of Miami, is the more forgiving, beginner-friendly option; further south, Currumbin ("The Alley") is longboard-friendly. For day-to-day conditions, a live swell/report app (Coastalwatch or Swellnet) will tell you more than any static guide.</p>
+        <h4>Gym &amp; nutrition</h4>
+        <p>The consistent, evidence-backed thread across strength research: resistance training at least twice a week with progressive overload is the single biggest lever for long-term strength, muscle, and healthy aging — bigger than any specific program. Nutrition-wise, adequate protein (commonly cited around 1.6–2.2g/kg bodyweight for people strength training) paired with mostly whole foods covers most of what the longevity research agrees on. This is general, well-established guidance, not a personal program — worth a chat with a doctor or accredited exercise physiologist for anything tailored to you.</p>
+        <div class="src-links">Sources: <a href="https://www.nia.nih.gov/news/how-can-strength-training-build-healthier-bodies-we-age" target="_blank">NIA — strength training &amp; aging</a> · <a href="https://www.acefitness.org/resources/pros/expert-articles/8882/strength-training-for-longevity/" target="_blank">ACE Fitness — strength training for longevity</a> · <a href="https://thesurfatlas.com/australia-surfing/surfing-the-gold-coast/" target="_blank">Surf Atlas — Gold Coast guide</a></div>
+      </div>
+    </details>
+
+    <details class="toolkit-group">
+      <summary>Learning systems &amp; mindsets</summary>
+      <div class="body">
+        <ul>
+          <li><b>Spaced repetition</b> — review something right before you'd forget it, not on a fixed schedule. This is why Anki/WaniKani beat flashcard cramming for anything you need to retain long-term.</li>
+          <li><b>Deliberate practice</b> — focused reps just past your current skill level, with feedback, beat unfocused hours logged. 20 sharp minutes on one weak point outperforms 2 hours of comfortable repetition.</li>
+          <li><b>Growth mindset</b> (Carol Dweck) — treat "I'm bad at this" as "I'm bad at this yet." Ability grows with the right kind of effort; being new at cabinetry, Japanese, or the gym is a starting point, not a verdict.</li>
+          <li><b>Active recall &amp; interleaving</b> — testing yourself (not re-reading notes) and mixing skills in a session both beat passive review for anything you actually need to remember or apply under pressure.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="toolkit-group">
+      <summary>Positive &amp; realistic thinking</summary>
+      <div class="body">
+        <p>The version of "positive thinking" with the best track record isn't blind optimism — it's <b>realistic optimism</b>: expect the thing to be genuinely hard, plan for the setback, and still believe it's workable. Positive psychology research (Seligman and others) consistently finds this beats both pessimism and unrealistic "it'll all work out" thinking, because it doesn't collapse the first time something goes wrong.</p>
+        <p>Practical version for this tracker: before starting an item, name one likely snag out loud, then start anyway. It removes the surprise, not the motivation.</p>
+      </div>
+    </details>
+
+    <details class="toolkit-group">
+      <summary>Motivation that doesn't go stale</summary>
+      <div class="body">
+        <p>The research (Self-Determination Theory — Deci &amp; Ryan; popularized by Daniel Pink's <i>Drive</i>) is consistent: motivation holds up longest when three things are present — <b>autonomy</b> (you chose the how), <b>mastery</b> (visible progress, however small), and <b>purpose</b> (it connects to something bigger than the task). A single static motivational quote or poster fades fast because it only ever hits one of these.</p>
+        <p>That's why the banner above rotates daily instead of showing the same line — pulling from growth-mindset, autonomy/mastery/purpose, realistic-optimism, and a couple of other angles, so it stays a nudge rather than wallpaper.</p>
+        <div class="src-links">Sources: <a href="https://www.bitesizelearning.co.uk/resources/autonomy-mastery-purpose-motivation-pink" target="_blank">Autonomy, Mastery, Purpose — Pink's Drive</a> · <a href="https://www.mindtools.com/asmdp60/pinks-autonomy-mastery-and-purpose-framework/" target="_blank">MindTools — AMP framework</a></div>
+      </div>
+    </details>
+
+    <details class="toolkit-group">
+      <summary>Motivational items</summary>
+      <div class="body">
+        <p>Physical, visible anchors tend to outlast digital ones. A few worth considering against your list above: a small SketchUp print-out or sketch of the finished cabinetry piece pinned where you work; a "16 houses built" reminder somewhere in the workshop for the days a job feels slow; a simple physical tally (tokens, a jar, a wall chart) for gym or surf sessions so progress is visible without opening an app; a single Indonesian/Japanese word-of-the-day card on the fridge.</p>
+      </div>
+    </details>
+
+    <details class="toolkit-group">
+      <summary>Quantum considerations</summary>
+      <div class="body">
+        <p><b>If you want to actually learn quantum physics:</b> for a first real pass, Sean Carroll's <i>Something Deeply Hidden</i> or Leonard Susskind's <i>Theoretical Minimum</i> series (book or free Stanford lectures) are the commonly recommended entry points — the first for concepts with no maths, the second if you want the actual mechanics.</p>
+        <p><b>Quantum-inspired mindset framing:</b> some self-development writing borrows quantum terms — "observer effect," "superposition," "possibility" — as <i>metaphors</i> for mindset (e.g. "how you observe a situation shapes what you notice in it"). <span class="caveat">Worth being clear-eyed about: this is metaphor, not physics — actual quantum mechanics doesn't operate on human intention or belief, and treating it as if it does is a popular but scientifically unsupported leap.</span> Used honestly as metaphor rather than mechanism, though, "what you focus on is what you notice" is a fair and useful idea on its own.</p>
+      </div>
+    </details>
+
+    <details class="toolkit-group">
+      <summary>Breathing techniques</summary>
+      <div class="body">
+        <ul>
+          <li><b>Physiological sigh</b> (double inhale through the nose, long exhale through the mouth) — the fastest-acting of the three for calming down in the moment; good right before a hard conversation or a stressful task.</li>
+          <li><b>Box breathing</b> (inhale–hold–exhale–hold, 4 seconds each) — used by military/tactical training for steady, sustained calm and focus; good pre-session ritual before gym, surfing, or a big pricing job.</li>
+          <li><b>Wim Hof method</b> (controlled hyperventilation + breath holds, often paired with cold exposure) — more about building resilience/energy over time than instant calm; evidence is promising but less settled than the other two, and it's not the one to reach for mid-stress.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="toolkit-group">
+      <summary>Laws of karma</summary>
+      <div class="body">
+        <p>Stripped to its practical core (from the Buddhist/Hindu framing this idea comes from): actions — including intent, not just the deed — tend to shape what comes back to you over time. Used as a personal mindset rather than a literal cosmic ledger, it's a useful accountability lens: the effort you put into a job, a relationship, or a habit today is genuinely what tends to compound into tomorrow's outcome. That's the version worth keeping close to this tracker — cause and effect, intent counted, patience with the timeline.</p>
+        <div class="src-links">Sources: <a href="https://tricycle.org/magazine/cause-and-effect/" target="_blank">Tricycle — The Law of Karma</a> · <a href="https://www.buddhanet.net/e-learning/karma1/" target="_blank">Buddhanet — The Law of Karma</a></div>
+      </div>
+    </details>
+
+    <h2 class="section-heading">Daily / Weekly Journal</h2>
+    <p class="section-sub">Auto-recap of what happened, plus a learning focus suggested for next time. Tell Claude about your day (or just let the morning refresh run) and a new entry lands here.</p>
+    <div id="journal-list"></div>
+
+    <footer>
+      Checkboxes are saved on this device automatically. To set a deadline, get help finishing a task, or update the categories themselves,
+      tell Claude in Cowork and it'll rebuild this app (your local checkbox progress stays put — that's saved separately per device).
+      A scheduled refresh keeps the linked Cowork tracker's calendar and journal in sync each morning.
+    </footer>
+  </div>
+</div>
+
+<script>
+const CATEGORIES = [
+  {
+    title: "Main Work",
+    subtitle: "Sales estimating manager",
+    items: [
+      { text: "Work on processes" },
+      { text: "Setup systems" },
+    ]
+  },
+  {
+    title: "Side Hustle — Building",
+    subtitle: "16 houses built so far · odd builds through the year",
+    items: [
+      { text: "Current job — priced, pending preliminary information" },
+      { text: "Decks and patios (weekend work)" },
+    ]
+  },
+  {
+    title: "Side Hustle — Cabinetry",
+    items: [
+      { text: "Job 1 — price job for son's girlfriend's dad", group: true, children: [
+        { text: "Draw the plans" },
+        { text: "Price it up on a cabinetry system" },
+        { text: "Install cabinetry" },
+        { text: "Cabinetry to pantry (upgrade)" },
+      ]},
+      { text: "Job 2 — price cabinetry around our house", group: true, children: [
+        { text: "Daybed to bedroom 1" },
+        { text: "Inbuilt sitting area / library to hallway" },
+        { text: "Small 300mm wide display cabinet" },
+      ]},
+      { text: "Setup a small advertising process to promote more jobs" },
+    ]
+  },
+  {
+    title: "Side Hustle — Bali Import",
+    subtitle: "indohomecollective · blinds, timber bowls & plates, leather-bound notebooks, leather coasters",
+    items: [
+      { text: "Setup Instagram account for advertising" },
+      { text: "Work on website (indohomecollective)" },
+      { text: "Collect photos for selling" },
+    ]
+  },
+  {
+    title: "Finish Our Home — Final 1%",
+    subtitle: "Priority — needed before listing the house",
+    items: [
+      { text: "Backyard — level ground with crusher dust" },
+      { text: "Backyard — add artificial grass" },
+      { text: "Side yard — level ground with crusher dust" },
+      { text: "Side yard — add artificial grass" },
+      { text: "Painting — fences" },
+      { text: "Painting — touch-up around the house" },
+      { text: "Painting — poolhouse" },
+      { text: "Painting — stairs" },
+      { text: "Grout & touch-up alfresco area" },
+      { text: "Update garage" },
+    ]
+  },
+  {
+    title: "Housework",
+    items: [
+      { text: "Share tasks with wife so she isn't overwhelmed" },
+      { text: "Cooking" },
+      { text: "Cleaning" },
+      { text: "Clean the cars" },
+    ]
+  },
+  {
+    title: "Health & Fitness",
+    items: [
+      { text: "Surfing — improve skillset (2–3×/week ideally)" },
+      { text: "Surfing — research local waves around Miami" },
+      { text: "Gym — best exercises for age: strength, size, fitness (2–3×/week)" },
+      { text: "Nutrition — best options for longevity, health, fitness" },
+      { text: "Nutrition — be super fit at 60" },
+    ]
+  },
+  {
+    title: "Personal Growth",
+    items: [
+      { text: "Learn Indonesian" },
+      { text: "Learn Japanese" },
+      { text: "Learn to make apps for phone" },
+    ]
+  },
+  {
+    title: "Sell Items in the House",
+    items: [
+      { text: "Camp gear" },
+      { text: "Surfboards" },
+      { text: "Misc items" },
+    ]
+  },
+  {
+    title: "Finance",
+    items: [
+      { text: "Yearly budget check (update when something changes)" },
+    ]
+  },
+  {
+    title: "Family & Personal",
+    items: [
+      { text: "Fishing with my son" },
+      { text: "Help my son stay motivated" },
+      { text: "Dance lessons with wife" },
+    ]
+  },
+];
+
+const CALENDAR_EVENTS = []; // populated by scheduled refresh — empty means nothing in the next 7 days
+const LAST_SYNCED = "17 Aug 2026, 8:00 AM (Australia/Brisbane)";
+
+function slugify(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+// IDs are derived from category/item text (not render order), so reordering or
+// adding items in CATEGORIES doesn't reassign a saved "done" state to the wrong item.
+function renderItem(item, path) {
+  const itemPath = path + "__" + slugify(item.text);
+  const id = "it-" + itemPath;
+  const isGroup = !!item.group;
+  const li = document.createElement("li");
+  const row = document.createElement("div");
+  row.className = "item" + (isGroup ? " group-header" : "");
+  if (isGroup) {
+    const span = document.createElement("label");
+    span.textContent = item.text;
+    row.appendChild(span);
+  } else {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = id;
+    if (item.done) { cb.checked = true; row.classList.add("done"); }
+    cb.addEventListener("change", () => {
+      row.classList.toggle("done", cb.checked);
+      updateStats();
+    });
+    const label = document.createElement("label");
+    label.htmlFor = id;
+    label.textContent = item.text;
+    row.appendChild(cb);
+    row.appendChild(label);
+    if (item.due) {
+      const badge = document.createElement("span");
+      badge.className = "due-badge" + (item.overdue ? " overdue" : "");
+      badge.textContent = item.due;
+      row.appendChild(badge);
+    }
+  }
+  li.appendChild(row);
+  if (item.children && item.children.length) {
+    const sub = document.createElement("ul");
+    sub.className = "items";
+    item.children.forEach(c => sub.appendChild(renderItem(c, itemPath)));
+    li.appendChild(sub);
+  }
+  return li;
+}
+
+function countLeaf(items) {
+  let total = 0, done = 0;
+  items.forEach(it => {
+    if (it.children && it.children.length) {
+      const r = countLeaf(it.children);
+      total += r.total; done += r.done;
+    } else if (!it.group) {
+      total += 1;
+    }
+  });
+  return { total, done };
+}
+
+function renderCategory(cat) {
+  const card = document.createElement("div");
+  card.className = "card";
+  const h3 = document.createElement("h3");
+  h3.textContent = cat.title;
+  card.appendChild(h3);
+  if (cat.subtitle) {
+    const p = document.createElement("p");
+    p.className = "cat-sub";
+    p.textContent = cat.subtitle;
+    card.appendChild(p);
+  }
+  const { total } = countLeaf(cat.items);
+  const progRow = document.createElement("div");
+  progRow.className = "progress-row";
+  progRow.innerHTML = `<div class="progress-track"><div class="progress-fill" style="width:0%"></div></div><div class="progress-count">0/${total}</div>`;
+  progRow.dataset.total = total;
+  card.appendChild(progRow);
+
+  const ul = document.createElement("ul");
+  ul.className = "items";
+  cat.items.forEach(it => ul.appendChild(renderItem(it, slugify(cat.title))));
+  card.appendChild(ul);
+  card.progRow = progRow;
+  return card;
+}
+
+function updateStats() {
+  let total = 0, done = 0;
+  document.querySelectorAll(".card").forEach(card => {
+    const boxes = card.querySelectorAll('input[type="checkbox"]');
+    const t = boxes.length;
+    let d = 0;
+    boxes.forEach(b => { if (b.checked) d++; });
+    total += t; done += d;
+    const pct = t ? Math.round((d / t) * 100) : 0;
+    card.progRow.querySelector(".progress-fill").style.width = pct + "%";
+    card.progRow.querySelector(".progress-count").textContent = `${d}/${t}`;
+  });
+  document.getElementById("stat-total").textContent = total;
+  document.getElementById("stat-done").textContent = done;
+  document.getElementById("stat-pct").textContent = (total ? Math.round((done/total)*100) : 0) + "%";
+  document.getElementById("stat-cats").textContent = CATEGORIES.length;
+}
+
+function renderCalendar() {
+  const body = document.getElementById("cal-body");
+  if (!CALENDAR_EVENTS.length) return;
+  body.innerHTML = "";
+  CALENDAR_EVENTS.forEach(ev => {
+    const row = document.createElement("div");
+    row.className = "cal-event";
+    row.innerHTML = `<span>${ev.title}</span><span class="when">${ev.when}</span>`;
+    body.appendChild(row);
+  });
+}
+
+const MOTIVATION = [
+  { tag: "Growth mindset", quote: "Progress beats perfection — a rough draft beats a perfect plan you never start." },
+  { tag: "Behavioral science", quote: "You don't need to feel motivated to start — momentum creates motivation, not the other way around." },
+  { tag: "Autonomy", quote: "Pick the how, not just the what — a task you get to do your way sticks longer than one handed to you." },
+  { tag: "Realistic optimism", quote: "Expect it to be hard, not that it won't work. That's the version of positive thinking that survives contact with a bad day." },
+  { tag: "Deliberate practice", quote: "20 focused minutes on the hard part beats 2 comfortable hours on the easy part." },
+  { tag: "Growth mindset", quote: "Mastery is a direction, not a destination — you're allowed to enjoy being bad at something new." },
+  { tag: "Karma, practically", quote: "What you put in tends to come back around — cause and effect, not mysticism." },
+  { tag: "Quantum metaphor", quote: "Attention changes what you notice, the same way observation changes what's measured — showing up changes what's possible." },
+  { tag: "Purpose", quote: "Purpose outlasts willpower — reconnect today's task to the bigger reason before you start it." },
+  { tag: "Momentum", quote: "One box ticked today outweighs ten planned for someday." },
+  { tag: "Recovery", quote: "Rest is part of the training, not a break from it." },
+  { tag: "Curiosity", quote: "Curiosity outlasts discipline — ask what would make this interesting before what would make you disciplined." },
+  { tag: "Karma, practically", quote: "Today's effort is tomorrow's easier day." },
+  { tag: "Breath", quote: "The breath is the one lever you always have on hand — reset it before you decide anything big." },
+];
+
+function dayOfYear(d) {
+  const start = new Date(d.getFullYear(), 0, 0);
+  const diff = d - start;
+  return Math.floor(diff / 86400000);
+}
+
+function renderMotivation() {
+  const idx = dayOfYear(new Date()) % MOTIVATION.length;
+  const m = MOTIVATION[idx];
+  document.getElementById("mot-tag").textContent = m.tag;
+  document.getElementById("mot-quote").textContent = m.quote;
+  document.getElementById("mot-source").textContent = "Rotates daily · see \"Motivation that doesn't go stale\" below for why";
+}
+
+const JOURNAL_ENTRIES = [
+  {
+    date: "17 Aug 2026",
+    recap: "Tracker built today from your habit-items list — 44 items across 11 areas, plus this Growth & Mindset toolkit. Calendar was clear for the week ahead, so it's a clean runway to start.",
+    focus: "Pick one item from each of your top 2–3 priority categories (Finish Our Home and one side hustle look like the ones with a real deadline pressure) and tell Claude which to tackle first — happy to help set a timeframe."
+  }
+];
+
+function renderJournal() {
+  const list = document.getElementById("journal-list");
+  list.innerHTML = "";
+  JOURNAL_ENTRIES.slice().reverse().forEach(e => {
+    const card = document.createElement("div");
+    card.className = "journal-card";
+    card.innerHTML = `<div class="jdate">${e.date}</div><p>${e.recap}</p><div class="focus"><b>Tomorrow's learning focus:</b> ${e.focus}</div>`;
+    list.appendChild(card);
+  });
+}
+
+const STORAGE_KEY = "cj-tracker-state-v1";
+function getDoneIds() {
+  const done = [];
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb => { if (cb.checked) done.push(cb.id); });
+  return done;
+}
+function applyDoneIds(doneIds, { silent } = {}) {
+  const doneSet = new Set(doneIds || []);
+  document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    const isDone = doneSet.has(cb.id);
+    cb.checked = isDone;
+    cb.closest(".item").classList.toggle("done", isDone);
+  });
+  updateStats();
+  if (!silent) saveState(); // keep local cache in sync with whatever state won (remote or local)
+}
+function loadState() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || { done: [] }; }
+  catch (e) { return { done: [] }; }
+}
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ done: getDoneIds() })); } catch (e) {}
+}
+function applyState() {
+  applyDoneIds(loadState().done, { silent: true });
+}
+// Exposed for the Firebase sync module (see the type="module" script below).
+window.__tracker = { getDoneIds, applyDoneIds };
+
+const grid = document.getElementById("grid");
+CATEGORIES.forEach(cat => grid.appendChild(renderCategory(cat)));
+updateStats();
+applyState();
+renderCalendar();
+renderMotivation();
+renderJournal();
+document.getElementById("synced").textContent = "Last synced: " + LAST_SYNCED;
+
+document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+  cb.addEventListener("change", () => {
+    saveState();
+    window.dispatchEvent(new CustomEvent("tracker:change", { detail: { done: getDoneIds() } }));
+  });
+});
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  });
+}
+
+let deferredInstallPrompt = null;
+const installBtn = document.getElementById("install-btn");
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  installBtn.classList.add("show");
+});
+installBtn.addEventListener("click", async () => {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  installBtn.classList.remove("show");
+});
+</script>
+
+<script type="module">
+  // Cross-device sync via Firebase (Firestore + Google sign-in) — Spark (free) plan.
+  // Falls back silently to local-only mode (localStorage) if firebase-config.js
+  // still has placeholder values, or if anything below fails to load.
+  import { firebaseConfig } from "./firebase-config.js";
+
+  const statusEl = document.getElementById("sync-status");
+  const signinBtn = document.getElementById("signin-btn");
+  const signoutBtn = document.getElementById("signout-btn");
+
+  const isConfigured = firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== "REPLACE_ME";
+
+  if (!isConfigured) {
+    statusEl.textContent = "Local-only (Firebase not set up — see README)";
+    signinBtn.style.display = "none";
+    signoutBtn.style.display = "none";
+  } else {
+    try {
+      const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js");
+      const {
+        getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+      } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js");
+      const {
+        getFirestore, doc, setDoc, onSnapshot, enableIndexedDbPersistence, serverTimestamp,
+      } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      try { await enableIndexedDbPersistence(db); } catch (e) { /* multiple tabs open, or unsupported — fine, just no offline cache */ }
+
+      let unsubscribeSnapshot = null;
+      let applyingRemote = false;
+      let currentStateRef = null; // set while signed in; the single tracker:change listener below reads this
+
+      signinBtn.addEventListener("click", async () => {
+        try {
+          await signInWithPopup(auth, new GoogleAuthProvider());
+        } catch (e) {
+          statusEl.textContent = "Sign-in failed — try again";
+        }
+      });
+      signoutBtn.addEventListener("click", () => signOut(auth));
+
+      // Registered once (not per sign-in) so repeated sign-in/sign-out cycles or
+      // switching Google accounts never leave a stale listener writing to the wrong doc.
+      window.addEventListener("tracker:change", (e) => {
+        if (applyingRemote || !currentStateRef) return; // don't echo a remote update straight back up
+        setDoc(currentStateRef, { done: e.detail.done, updatedAt: serverTimestamp() }, { merge: true });
+      });
+
+      onAuthStateChanged(auth, (user) => {
+        if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+        currentStateRef = null;
+
+        if (!user) {
+          signinBtn.style.display = "inline-block";
+          signoutBtn.style.display = "none";
+          statusEl.textContent = "Not signed in — saving to this device only";
+          statusEl.classList.remove("synced");
+          return;
+        }
+
+        signinBtn.style.display = "none";
+        signoutBtn.style.display = "inline-block";
+        statusEl.textContent = "Syncing…";
+
+        const stateRef = doc(db, "users", user.uid, "tracker", "state");
+        currentStateRef = stateRef;
+
+        unsubscribeSnapshot = onSnapshot(stateRef, (snap) => {
+          if (snap.exists()) {
+            applyingRemote = true;
+            window.__tracker.applyDoneIds(snap.data().done || [], { silent: true });
+            applyingRemote = false;
+          } else {
+            // First time this account has signed in anywhere — seed the cloud copy
+            // from whatever's currently on this device (e.g. local-only progress so far).
+            setDoc(stateRef, { done: window.__tracker.getDoneIds(), updatedAt: serverTimestamp() });
+          }
+          statusEl.textContent = `Synced as ${user.email}`;
+          statusEl.classList.add("synced");
+        }, () => {
+          statusEl.textContent = "Sync error — check Firestore rules (see README)";
+          statusEl.classList.remove("synced");
+        });
+      });
+    } catch (e) {
+      statusEl.textContent = "Local-only (sync failed to load)";
+      signinBtn.style.display = "none";
+      signoutBtn.style.display = "none";
+    }
+  }
+</script>
+</body>
+</html>
