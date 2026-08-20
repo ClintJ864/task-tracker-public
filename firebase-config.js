@@ -8,10 +8,10 @@
 // (saves to this device only, no cross-device sync).
 
 export const firebaseConfig = {
-  apiKey: "REPLACE_ME",
-  authDomain: "REPLACE_ME.firebaseapp.com",
-  projectId: "REPLACE_ME",
-  storageBucket: "REPLACE_ME.appspot.com",
-  messagingSenderId: "REPLACE_ME",
-  appId: "REPLACE_ME",
+  apiKey: "AIzaSyDl09qoPJd6_ojhojX0Zrzzt_vIT9eQgK8",
+  authDomain: "cj-task-tracker.firebaseapp.com",
+  projectId: "cj-task-tracker",
+  storageBucket: "cj-task-tracker.firebasestorage.app",
+  messagingSenderId: "1000921968169",
+  appId: "1:1000921968169:web:b806fa782d3c831523f638",
 };
