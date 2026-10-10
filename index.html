@@ -171,6 +171,41 @@
   }
   .quickadd-hint { font-size: 11.5px; color: var(--text-muted); margin-bottom: 20px; }
 
+  /* Habit loop + 30-day on-ramp */
+  .habit-card {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--card-shadow); padding: 16px 18px; margin-bottom: 18px;
+  }
+  .habit-card .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--series-1); font-weight: 700; margin-bottom: 6px; }
+  .habit-card h3 { font-size: 15px; margin: 0 0 6px; font-weight: 700; }
+  .habit-card p { font-size: 13.5px; line-height: 1.5; margin: 6px 0; color: var(--text-secondary); }
+  .habit-stack { font-size: 14px; line-height: 1.7; color: var(--text-primary); }
+  .habit-stack .fixed { color: var(--text-secondary); }
+  .habit-stack input {
+    font: inherit; font-size: 13.5px; padding: 5px 9px; border-radius: 8px; min-width: 150px; max-width: 100%;
+    border: 1px solid var(--border); background: var(--page); color: var(--text-primary);
+  }
+  .habit-stack .filled { font-weight: 700; color: var(--series-1); }
+  .habit-actions { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  .habit-link { font: inherit; font-size: 12.5px; background: none; border: none; color: var(--text-muted); text-decoration: underline; cursor: pointer; padding: 0; }
+  .habit-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    background: var(--surface-1); border: 1px dashed var(--border); border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 18px; font-size: 13px; color: var(--text-secondary);
+  }
+  .habit-dots { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0 4px; }
+  .habit-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--gridline); background: transparent; }
+  .habit-dot.done { background: var(--status-good); border-color: var(--status-good); }
+  .habit-dot.missed { border-color: var(--text-muted); opacity: .55; }
+  .habit-dot.today { border-color: var(--series-1); border-width: 2px; }
+  .habit-dot.future { opacity: .4; }
+  .habit-phase { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+  .habit-gentle { font-size: 12.5px; background: color-mix(in srgb, var(--series-1) 8%, var(--surface-1)); border-radius: 8px; padding: 8px 10px; margin-top: 10px; color: var(--text-secondary); }
+  .habit-reflect textarea {
+    width: 100%; box-sizing: border-box; font: inherit; font-size: 13.5px; padding: 9px 11px; border-radius: 8px; min-height: 64px;
+    border: 1px solid var(--border); background: var(--page); color: var(--text-primary); margin-top: 6px; resize: vertical;
+  }
+
   /* All-tasks grid (unchanged from original, plus add-row) */
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
   .card {
@@ -287,6 +322,8 @@
 
     <!-- TODAY -->
     <section class="tab-panel" id="panel-today">
+      <div id="habit-area"></div>
+
       <div class="motivation-banner">
         <div>
           <div class="tag" id="mot-tag">Today's angle</div>
@@ -558,6 +595,7 @@ const USER_ITEMS_KEY = "cj-tracker-user-items-v1"; // [{id, category, text}]
 const STREAK_KEY = "cj-tracker-streak-v1";        // {count, lastDate}
 const ACTIVITY_KEY = "cj-tracker-activity-v1";    // {"YYYY-MM-DD": count}
 const TAB_KEY = "cj-tracker-tab";
+const HABIT_KEY = "cj-tracker-habit-v1";          // {cue, reward, start, log:{date:true}, reflections:{3,7,14,30}, skipped}
 
 function todayStr() {
   const d = new Date();
@@ -833,6 +871,7 @@ function recordCompletion() {
     s.count = (s.lastDate === yestStr) ? s.count + 1 : 1;
     s.lastDate = today;
     saveStreak(s);
+    habitOnFirstTick();
   }
   const a = loadActivity();
   a[today] = (a[today] || 0) + 1;
@@ -979,6 +1018,7 @@ function refreshAll() {
   updateStats();
   renderToday();
   renderStreakAndActivity();
+  renderHabit();
 }
 
 // ---------- checkbox wiring (shared by built-in + user items) ----------
@@ -1007,7 +1047,7 @@ function setTab(name) {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + name));
   try { localStorage.setItem(TAB_KEY, name); } catch (e) {}
-  if (name === "today") { renderToday(); renderStreakAndActivity(); }
+  if (name === "today") { renderToday(); renderStreakAndActivity(); renderHabit(); }
 }
 document.getElementById("tabs").addEventListener("click", (e) => {
   const btn = e.target.closest(".tab");
@@ -1062,6 +1102,224 @@ function renderJournal() {
     card.innerHTML = `<div class="jdate">${e.date}</div><p>${e.recap}</p><div class="focus"><b>Tomorrow's learning focus:</b> ${e.focus}</div>`;
     list.appendChild(card);
   });
+}
+
+// ---------- habit loop + 30-day on-ramp ----------
+// Cue -> routine -> reward. The routine is fixed: open the tracker and tick one thing.
+// Ticking any item counts as the habit for that day. Stored on this device only.
+const HABIT_PHASES = [
+  { upTo: 3,  name: "Prove you can do it",   tip: "Keep it tiny. If it feels hard, make it smaller: just open the app and tick one thing." },
+  { upTo: 7,  name: "Building consistency",  tip: "Same size habit. Pay attention to your cue and your reward." },
+  { upTo: 14, name: "Making it stick",       tip: "Now you can stretch it by 1%, such as one extra tick. No more than that." },
+  { upTo: 30, name: "Keep going",            tip: "Habits often take around two months to feel automatic. Consistency beats intensity." },
+];
+const HABIT_REFLECTIONS = {
+  3:  "How did it feel? What was easier or harder than you expected?",
+  7:  "What's working with your cue and reward? What might need adjusting?",
+  14: "What's getting easier? What challenges are you noticing?",
+  30: "How has this habit changed your day? What surprised you?",
+};
+const HABIT_MILESTONES = [3, 7, 14, 30];
+
+function loadHabit() {
+  try { return JSON.parse(localStorage.getItem(HABIT_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+function saveHabit(h) { try { localStorage.setItem(HABIT_KEY, JSON.stringify(h)); } catch (e) {} }
+function dateFromStr(s) { const p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+function addDaysStr(s, n) {
+  const d = dateFromStr(s); d.setDate(d.getDate() + n);
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function habitDayNumber(h) {
+  return Math.round((dateFromStr(todayStr()) - dateFromStr(h.start)) / 86400000) + 1;
+}
+
+// Called the first time an item is ticked each day.
+function habitOnFirstTick() {
+  const h = loadHabit();
+  if (!h.start) return;
+  h.log = h.log || {};
+  h.log[todayStr()] = true;
+  saveHabit(h);
+  showToast("Habit done. Now: " + (h.reward || "enjoy it") + ".");
+}
+
+function hEl(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function renderHabit() {
+  const area = document.getElementById("habit-area");
+  if (!area) return;
+  area.innerHTML = "";
+  const h = loadHabit();
+  const today = todayStr();
+
+  // --- not set up yet ---
+  if (!h.start) {
+    if (h.skipped === today) {
+      const bar = hEl("div", "habit-bar");
+      bar.appendChild(hEl("span", null, "Make this app a habit: set your cue and reward."));
+      const b = hEl("button", "shuffle-btn", "Set it up");
+      b.addEventListener("click", () => { const x = loadHabit(); delete x.skipped; saveHabit(x); renderHabit(); });
+      bar.appendChild(b);
+      area.appendChild(bar);
+      return;
+    }
+    area.appendChild(buildHabitForm(h, false));
+    return;
+  }
+
+  // --- editing ---
+  if (h.editing) { area.appendChild(buildHabitForm(h, true)); return; }
+
+  const day = habitDayNumber(h);
+  const log = h.log || {};
+  const refl = h.reflections || {};
+
+  // --- finished the 30 days: compact reminder (plus any unanswered reflection) ---
+  if (day > 30) {
+    const bar = hEl("div", "habit-bar");
+    bar.appendChild(hEl("span", null, "Habit loop: after I " + h.cue + ", I open the tracker and tick one thing, then " + h.reward + "."));
+    const edit = hEl("button", "habit-link", "Edit");
+    edit.addEventListener("click", () => { const x = loadHabit(); x.editing = true; saveHabit(x); renderHabit(); });
+    bar.appendChild(edit);
+    area.appendChild(bar);
+    const pendingDone = HABIT_MILESTONES.find(m => !refl[m] && day > m);
+    if (pendingDone) area.appendChild(buildReflectionCard(h, pendingDone));
+    return;
+  }
+
+  // --- on-ramp card ---
+  const card = hEl("div", "habit-card");
+  card.appendChild(hEl("div", "tag", "Your 30-day on-ramp"));
+  card.appendChild(hEl("h3", null, "Day " + day + " of 30"));
+
+  const phase = HABIT_PHASES.find(p => day <= p.upTo) || HABIT_PHASES[HABIT_PHASES.length - 1];
+  const stack = hEl("div", "habit-stack");
+  stack.appendChild(document.createTextNode("After I "));
+  stack.appendChild(hEl("span", "filled", h.cue));
+  stack.appendChild(hEl("span", "fixed", ", I will open the tracker and tick one thing, then I will "));
+  stack.appendChild(hEl("span", "filled", h.reward));
+  stack.appendChild(document.createTextNode("."));
+  card.appendChild(stack);
+
+  const dots = hEl("div", "habit-dots");
+  for (let i = 1; i <= 30; i++) {
+    const ds = addDaysStr(h.start, i - 1);
+    let cls = "habit-dot";
+    if (log[ds]) cls += " done";
+    else if (ds < today) cls += " missed";
+    else if (ds === today) cls += " today";
+    else cls += " future";
+    const d = hEl("span", cls);
+    d.title = "Day " + i + " (" + ds + ")";
+    dots.appendChild(d);
+  }
+  card.appendChild(dots);
+  card.appendChild(hEl("div", "habit-phase", phase.name + ": " + phase.tip));
+
+  const doneToday = !!log[today];
+  const yesterdayMissed = day > 1 && !log[addDaysStr(today, -1)];
+  if (doneToday) {
+    card.appendChild(hEl("div", "habit-gentle", "Done for today. Reward time: " + h.reward + "."));
+  } else if (yesterdayMissed) {
+    card.appendChild(hEl("div", "habit-gentle", "Missed a day? That's normal, and one miss doesn't break a habit. Skip the catch-up: just tick one thing today. Still hard? Make it smaller, like only opening the app."));
+  } else {
+    card.appendChild(hEl("div", "habit-gentle", "Today's whole job: tick one thing. That's it."));
+  }
+
+  const actions = hEl("div", "habit-actions");
+  const edit = hEl("button", "habit-link", "Change my cue or reward");
+  edit.addEventListener("click", () => { const x = loadHabit(); x.editing = true; saveHabit(x); renderHabit(); });
+  actions.appendChild(edit);
+  card.appendChild(actions);
+  area.appendChild(card);
+
+  // earliest reached milestone with no reflection yet
+  const pending = HABIT_MILESTONES.find(m => !refl[m] && day > m);
+  if (pending) area.appendChild(buildReflectionCard(h, pending));
+}
+
+function buildHabitForm(h, isEdit) {
+  const card = hEl("div", "habit-card");
+  card.appendChild(hEl("div", "tag", isEdit ? "Edit your habit loop" : "Make this app a habit"));
+  card.appendChild(hEl("h3", null, isEdit ? "Change your cue or reward" : "Hook it onto something you already do"));
+  if (!isEdit) {
+    card.appendChild(hEl("p", null, "Tie opening this tracker to a routine that already happens every day, then give yourself an instant reward. The habit stays tiny: tick one thing."));
+  }
+  const stack = hEl("div", "habit-stack");
+  stack.appendChild(document.createTextNode("After I "));
+  const cue = document.createElement("input");
+  cue.placeholder = "check the surf report"; cue.maxLength = 60; cue.value = h.cue || "";
+  stack.appendChild(cue);
+  stack.appendChild(hEl("span", "fixed", ", I will open the tracker and tick one thing, then I will "));
+  const reward = document.createElement("input");
+  reward.placeholder = "make a coffee"; reward.maxLength = 60; reward.value = h.reward || "";
+  stack.appendChild(reward);
+  stack.appendChild(document.createTextNode("."));
+  card.appendChild(stack);
+
+  const actions = hEl("div", "habit-actions");
+  const save = hEl("button", "shuffle-btn", isEdit ? "Save" : "Start my 30 days");
+  save.addEventListener("click", () => {
+    const c = cue.value.trim(), r = reward.value.trim();
+    if (!c || !r) { (c ? reward : cue).focus(); return; }
+    const x = loadHabit();
+    x.cue = c; x.reward = r;
+    if (!x.start) { x.start = todayStr(); x.log = {}; x.reflections = {}; }
+    delete x.editing; delete x.skipped;
+    saveHabit(x);
+    renderHabit();
+  });
+  actions.appendChild(save);
+  const skip = hEl("button", "habit-link", isEdit ? "Cancel" : "Not now");
+  skip.addEventListener("click", () => {
+    const x = loadHabit();
+    if (isEdit) delete x.editing; else x.skipped = todayStr();
+    saveHabit(x);
+    renderHabit();
+  });
+  actions.appendChild(skip);
+  card.appendChild(actions);
+  return card;
+}
+
+function buildReflectionCard(h, milestone) {
+  const card = hEl("div", "habit-card habit-reflect");
+  card.appendChild(hEl("div", "tag", "Day " + milestone + " check-in"));
+  card.appendChild(hEl("p", null, HABIT_REFLECTIONS[milestone]));
+  const ta = document.createElement("textarea");
+  ta.placeholder = "A line or two is plenty";
+  card.appendChild(ta);
+  const actions = hEl("div", "habit-actions");
+  const save = hEl("button", "shuffle-btn", "Save");
+  save.addEventListener("click", () => {
+    const text = ta.value.trim();
+    if (!text) { ta.focus(); return; }
+    const x = loadHabit();
+    x.reflections = x.reflections || {};
+    x.reflections[milestone] = text;
+    saveHabit(x);
+    showToast("Saved. Nice work noticing that.");
+    renderHabit();
+  });
+  actions.appendChild(save);
+  const skip = hEl("button", "habit-link", "Skip this one");
+  skip.addEventListener("click", () => {
+    const x = loadHabit();
+    x.reflections = x.reflections || {};
+    x.reflections[milestone] = "(skipped)";
+    saveHabit(x);
+    renderHabit();
+  });
+  actions.appendChild(skip);
+  card.appendChild(actions);
+  return card;
 }
 
 // ---------- init ----------
